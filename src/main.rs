@@ -52,7 +52,10 @@ fn main() -> Result<(), ureq::Error> {
             while o.trim().is_empty() {
                 print!("=> ");
                 stdout().flush().unwrap();
-                stdin().read_line(&mut o).expect("Can't read from stdin");
+                if (stdin().read_line(&mut o).expect("Can't read from stdin")) == 0 {
+                    // Exit on EOF
+                    return Ok(());
+                }
             }
             o
         } else {
@@ -139,9 +142,10 @@ fn main() -> Result<(), ureq::Error> {
         while query.trim().is_empty() {
             print!("=> ");
             stdout().flush().unwrap();
-            stdin()
-                .read_line(&mut query)
-                .expect("Can't read from stdin");
+            if (stdin().read_line(&mut query).expect("Can't read from stdin")) == 0 {
+                // Exit on EOF
+                return Ok(());
+            }
         }
     }
 
@@ -250,10 +254,15 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
     };
 
     let index_str = format!("{}.",(index + 1));
-    let tags = format_sense_tags(value);
+    let mut tags = format_sense_tags(value);
+    let info = format_sense_info(value);
+
+    if !info.is_empty() && !tags.is_empty() {
+        tags.push(',');
+    }
 
     (format!(
-        "{}{} {} {}",
+        "{}{} {}{}{}",
         parts_of_speech,
         index_str.bright_black(),
         english_definiton
@@ -261,7 +270,8 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
             .map(|i| value_to_str(i))
             .collect::<Vec<&str>>()
             .join(", "),
-        tags,
+        tags.bright_black(),
+        info.bright_black(),
     ), bump)
 }
 
@@ -294,9 +304,14 @@ fn format_sense_tags(value: &Value) -> String {
     if let Some(tags) = value.get("tags") {
         let tags = value_to_arr(tags);
 
-        for tag in tags {
+        if let Some(tag) = tags.get(0) {
             let t = format_sense_tag(value_to_str(tag));
-            builder.push_str(t.as_str())
+            builder += &format!(" {}", t.as_str());
+        }
+
+        for tag in tags.get(1).iter() {
+            let t = format_sense_tag(value_to_str(tag));
+            builder += &format!(", {}", t.as_str());
         }
     }
 
@@ -305,9 +320,25 @@ fn format_sense_tags(value: &Value) -> String {
 
 fn format_sense_tag(tag: &str) -> String {
     match tag {
-        "Usually written using kana alone" => "(UK)".to_string(),
-        s => format!("({})", s),
+        "Usually written using kana alone" => "UK".to_string(),
+        s => format!("{}", s),
     }
+}
+
+fn format_sense_info(value: &Value) -> String {
+    let mut builder = String::new();
+    if let Some(all_info) = value.get("info") {
+        let all_info = value_to_arr(all_info);
+
+        if let Some(info) = all_info.get(0) {
+            builder += &format!(" {}", value_to_str(info));
+        }
+
+        for info in all_info.get(1).iter() {
+            builder += &format!(", {}", value_to_str(info));
+        }
+    }
+    return builder;
 }
 
 //
