@@ -1,7 +1,9 @@
 use std::{
     io::{stdin, stdout, Write},
     process::{Command, Stdio},
-    thread::{self, JoinHandle},
+    path::PathBuf,
+    collections::HashSet,
+    error::Error,
     env,
 };
 
@@ -9,6 +11,7 @@ use argparse::{ArgumentParser, List, Print, Store, StoreTrue};
 use colored::*;
 use serde_json::Value;
 use atty::Stream;
+use kradical_parsing::radk;
 
 macro_rules! JISHO_URL {
     () => {
@@ -16,73 +19,110 @@ macro_rules! JISHO_URL {
     };
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Options {
     limit: usize,
     query: String,
-    kanji: bool, // Sadly not (yet) supported by jisho.org's API
     interactive: bool,
 }
 
-impl Default for Options {
-    fn default() -> Self {
-        Self {
-            limit: 0,
-            query: String::default(),
-            kanji: false,
-            interactive: false,
-        }
-    }
-}
+fn main() -> Result<(), Box<dyn Error>> {
 
-fn main() -> Result<(), ureq::Error> {
-    let term_size;
-
-    if atty::is(Stream::Stdout) {
-        term_size = terminal_size().unwrap_or(0);
+    let term_size = if atty::is(Stream::Stdout) {
+        terminal_size().unwrap_or(0)
     } else {
-        term_size = 0;
-    }
+        0
+    };
 
     let options = parse_args();
 
-    let mut query = {
+    let mut query = String::new();
+    loop {
+
+        query.clear();
         if options.interactive {
-            let mut o = String::new();
-            while o.trim().is_empty() {
+            while query.trim().is_empty() || query.trim() == ":" || query.trim() == "：" {
+                query.clear();
                 print!("=> ");
                 stdout().flush().unwrap();
-                if (stdin().read_line(&mut o).expect("Can't read from stdin")) == 0 {
-                    // Exit on EOF
+                if (stdin().read_line(&mut query).expect("Can't read from stdin")) == 0 {
+                    /* Exit on EOF */
                     return Ok(());
                 }
             }
-            o
         } else {
-            options.query.clone()
+            query = options.query.clone();
+            if query.trim().is_empty() || query.trim() == ":" || query.trim() == "：" {
+                return Ok(());
+            }
         }
-    };
+        query = query.trim().to_string();
 
-    loop {
         let mut lines_output = 0;
-        let mut output = String::new();
+        let mut output = String::with_capacity(5242880); /* Give output 5MB of buffer; Should be enough to avoid reallocs*/
 
-        if options.kanji {
-            // Open kanji page here
-            let threads = query
-                .chars()
-                .into_iter()
-                .map(|kanji| {
-                    let kanji = kanji.clone();
-                    thread::spawn(move || {
-                        webbrowser::open(&format!("https://jisho.org/search/{}%23kanji", kanji))
-                            .expect("Couldn't open browser");
-                    })
-                })
-                .collect::<Vec<JoinHandle<()>>>();
+        /* for kanji radical search */
+        let mut result: HashSet<_> = HashSet::new();
+        let mut aux: HashSet<_> = HashSet::new();
 
-            for thread in threads {
-                thread.join().unwrap();
+        if query.starts_with(':') || query.starts_with('：') {
+
+            let path = get_radkfile_path();
+
+            match radk::parse_file(path.unwrap()) { /* if it doesn't exist, just panic */
+                Ok(radk_list) => {
+                    result.clear();
+
+                    /* First iteration: get the baseline for the results */
+                    let mut rad = query.char_indices().nth(1).unwrap().1;
+                    if rad == '*' || rad == '＊' {
+                        let a = search_by_strokes(&mut query, &radk_list, 1);
+                        if a.is_err() {
+                            /* if search_by_radical returned an error then something is very wrong */
+                            panic!("Couldn't parse input: {}", a.err().unwrap());
+                        }
+                        rad = a.unwrap();
+                    }
+
+                    for k in radk_list.iter() {
+                        if k.radical.glyph.contains(rad) {
+                            for input in &k.kanji {
+                                result.insert(input);
+                            }
+                            break;
+                        }
+                    }
+
+                    /* Iterate until you've exhausted user input: refine the baseline to get final output */
+                    for (i, mut rad) in query.clone().chars().skip(2).enumerate() {
+                        if rad == '*' || rad == '＊' {
+                            let a = search_by_strokes(&mut query, &radk_list, i+2);
+                            if a.is_err() {
+                                /* if search_by_radical returned an error then something is very wrong */
+                                panic!("Couldn't parse input: {}", a.err().unwrap());
+                            }
+                            rad = a.unwrap();
+                        }
+
+                        for k in radk_list.iter() {
+                            if k.radical.glyph.contains(rad) {
+                                for input in &k.kanji {
+                                    aux.insert(input);
+                                }
+                                result = &result & &aux;
+                                aux.clear();
+                                break;
+                            }
+                        }
+                    }
+                    for r in result {
+                        print!("{r} ");
+                    }
+                    println!();
+                }
+                Err(_e) => eprintln!("Error while reading radkfile\nIf you don't have the radkfile, download it from \
+                https://www.edrdg.org/krad/kradinf.html and place it in \"~/.local/share/\" on Linux or \"~\\AppData\\Local\\\" on Windows. \
+                This file is needed to search radicals by strokes."),
             }
         } else {
             // Do API request
@@ -106,49 +146,35 @@ fn main() -> Result<(), ureq::Error> {
                 println!();
             }
 
-            // Iterate over meanings and print them
+            /* Iterate over meanings and print them */
             for (i, entry) in body.iter().enumerate() {
                 if i >= options.limit && options.limit != 0 {
                     break;
                 }
-                match print_item(&query, entry, &mut output) {
-                    Some(r) => lines_output += r,
-                    None => continue,
+                if let Some(r) = print_item(&query, entry, &mut output) {
+                    lines_output += r;
                 }
 
                 output.push('\n');
                 lines_output += 1;
             }
             output.pop();
-            if lines_output > 0 {
-                lines_output -= 1;
+            lines_output = lines_output.saturating_sub(1);
+
+            if lines_output >= term_size - 1 && term_size != 0 {
+                /* Output is a different process that is not a tty (i.e. less), but we want to keep colour */
+                env::set_var("CLICOLOR_FORCE", "1");
+                pipe_to_less(output);
+            } else {
+                print!("{}", output);
             }
 
-        }
 
-        if lines_output >= term_size - 1 && term_size != 0 {
-            // Output is a different process that is not a tty (i.e. less), but we want to keep colour
-            env::set_var("CLICOLOR_FORCE", "1");
-            pipe_to_less(output);
-        } else {
-            print!("{}", output);
         }
-
         if !options.interactive {
             break;
         }
-
-        query.clear();
-        while query.trim().is_empty() {
-            print!("=> ");
-            stdout().flush().unwrap();
-            if (stdin().read_line(&mut query).expect("Can't read from stdin")) == 0 {
-                // Exit on EOF
-                return Ok(());
-            }
-        }
     }
-
     Ok(())
 }
 
@@ -159,47 +185,47 @@ fn print_item(query: &str, value: &Value, output: &mut String) -> Option<usize> 
 
     *output += &format!("{} {}\n", format_form(query, main_form)?, format_result_tags(value));
 
-    // Print senses
+    /* Print senses */
     let senses = value_to_arr(value.get("senses")?);
     let mut prev_parts_of_speech = String::new();
 
     for (i, sense) in senses.iter().enumerate() {
-        let (sense_str, bump) = format_sense(&sense, i, &mut prev_parts_of_speech);
-        if sense_str.is_empty() {
-            continue;
-        }
-        // This bump is to keep count of lines that may or may not be printed (like noun, adverb)
-        if bump {
-            num_of_lines += 1;
-        }
-
-        *output += &format!("    {}\n", sense_str);
-    }
-
-    // Print alternative readings and kanji usage
-    match japanese.get(1) {
-        Some (form) => {
-            num_of_lines += 2;
-
-            *output += &format!("    {}", "Other forms\n".bright_blue());
-            *output += &format!("    {}", format_form(query, form)?);
-
-            for i in 2..japanese.len() {
-                *output += &format!(", {}", format_form(query, japanese.get(i)?)?);
+        let (sense_str, new_part_of_speech) = format_sense(sense, i, &mut prev_parts_of_speech);
+        if !sense_str.is_empty() {
+            /*
+             * If the current meaning of our word is a different part of speech
+             * (e.g. previous meaning was 'Noun' and the current is 'Adverb'), an extra line will be
+             * printed with this information
+             */
+            if new_part_of_speech {
+                num_of_lines += 1;
             }
-            output.push('\n');
+
+            *output += &format!("    {}\n", sense_str);
         }
-        None => {}
     }
 
-    num_of_lines += senses.iter().count() + 1;
+    /* Print alternative readings and kanji usage */
+    if let Some(form) = japanese.get(1) {
+        num_of_lines += 2;
+
+        *output += &format!("    {}", "Other forms\n".bright_blue());
+        *output += &format!("    {}", format_form(query, form)?);
+
+        for i in 2..japanese.len() {
+            *output += &format!(", {}", format_form(query, japanese.get(i)?)?);
+        }
+        output.push('\n');
+    }
+
+    num_of_lines += senses.len() + 1;
     Some(num_of_lines)
 }
 
 fn format_form(query: &str, form: &Value) -> Option<String> {
     let reading = form
         .get("reading")
-        .map(|i| value_to_str(i))
+        .map(value_to_str)
         .unwrap_or(query);
 
     let word = value_to_str(form.get("word").unwrap_or(form.get("reading")?));
@@ -218,25 +244,14 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
 
     let parts_of_speech = if let Some(parts_of_speech) = parts_of_speech {
         let parts = value_to_arr(parts_of_speech)
-            .to_owned()
             .iter()
             .map(|i| {
-                let s = value_to_str(i);
-                match s {
-                    "Suru verb - irregular" => "Irregular verb",
-                    _ => {
-                        if s.contains("Godan verb") {
-                            "Godan verb"
-                        } else {
-                            s
-                        }
-                    }
-                }
+                value_to_str(i)
             })
             .collect::<Vec<&str>>()
             .join(", ");
 
-        // Do not repeat a meaning's part of speech if it is the same as the previous meaning
+        /* Do not repeat a meaning's part of speech if it is the same as the previous meaning */
         if !parts.is_empty() && parts != *prev_parts_of_speech {
             *prev_parts_of_speech = parts.clone();
             format!("{}\n    ", parts.bright_blue())
@@ -247,11 +262,7 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
         String::new()
     };
 
-    let bump = if parts_of_speech.is_empty() {
-        false
-    } else {
-        true
-    };
+    let new_part_of_speech = !parts_of_speech.is_empty();
 
     let index_str = format!("{}.",(index + 1));
     let mut tags = format_sense_tags(value);
@@ -267,12 +278,12 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
         index_str.bright_black(),
         english_definiton
             .iter()
-            .map(|i| value_to_str(i))
+            .map(value_to_str)
             .collect::<Vec<&str>>()
             .join(", "),
         tags.bright_black(),
         info.bright_black(),
-    ), bump)
+    ), new_part_of_speech)
 }
 
 /// Format tags from a whole meaning
@@ -285,12 +296,16 @@ fn format_result_tags(value: &Value) -> String {
     }
 
     if let Some(jlpt) = value.get("jlpt") {
-        let jlpt = value_to_arr(&jlpt);
+        /*
+         * The jisho API actually returns an array of all of JLTP levels for each alternative of a word
+         * Since the main one is always at index 0, we take that for formatting
+         */
+        let jlpt = value_to_arr(jlpt);
         if !jlpt.is_empty() {
             let jlpt = value_to_str(jlpt.get(0).unwrap())
                 .replace("jlpt-", "")
                 .to_uppercase();
-            builder.push_str(&format!("({}) ", jlpt.bright_blue().to_string()));
+            builder.push_str(&format!("({}) ", jlpt.bright_blue()));
         }
     }
 
@@ -314,7 +329,6 @@ fn format_sense_tags(value: &Value) -> String {
             builder += &format!(", {}", t.as_str());
         }
     }
-
     builder
 }
 
@@ -338,7 +352,7 @@ fn format_sense_info(value: &Value) -> String {
             builder += &format!(", {}", value_to_str(info));
         }
     }
-    return builder;
+    builder
 }
 
 //
@@ -371,7 +385,9 @@ fn parse_args() -> Options {
     let mut query_vec: Vec<String> = Vec::new();
     {
         let mut ap = ArgumentParser::new();
-        ap.set_description("Use jisho.org from cli");
+        ap.set_description("Use jisho.org from cli. \
+                            Searching for kanji by radicals is also available if the radkfile file is installed in \"~/.local/share\" \
+                            or \"~\\AppData\\Local\\\" if you're on Windows.");
         ap.add_option(
             &["-V", "--version"],
             Print(env!("CARGO_PKG_VERSION").to_string()),
@@ -383,7 +399,9 @@ fn parse_args() -> Options {
             "Limit the amount of results",
         );
         ap.refer(&mut query_vec)
-            .add_argument("Query", List, "The query to search for");
+            .add_argument("Query", List, "Search terms using jisho.org;
+                          Prepend it with ':' to search a kanji by radicals instead \
+                          and ':*' to search a radical by strokes (e.g. ':口*').");
 
         ap.refer(&mut options.interactive).add_option(
             &["-i", "--interactive"],
@@ -391,18 +409,69 @@ fn parse_args() -> Options {
             "Don't exit after running a query",
         );
 
-        /* Uncomment when supported by jisho.org */
-        ap.refer(&mut options.kanji).add_option(
-            &["--kanji", "-k"],
-            StoreTrue,
-            "Look up a certain kanji",
-        );
-
         ap.parse_args_or_exit();
     }
 
     options.query = query_vec.join(" ");
     options
+}
+
+fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usize) -> Result<char, std::io::Error> {
+
+    let mut strokes = String::new();
+    let mut radicals: Vec<char> = Vec::new();
+    let rad;
+    loop{
+        print!("How many strokes does your radical have? ");
+        stdout().flush()?;
+        strokes.clear();
+        if (stdin().read_line(&mut strokes).expect("Can't read from stdin")) == 0 {
+            std::process::exit(0);
+        }
+
+        match strokes.trim().parse::<u8>() {
+            Ok(strk) => {
+                let mut i = 1;
+                for k in radk_list.iter() {
+                    if k.radical.strokes == strk {
+                        print!("{}{} ", i, k.radical.glyph);
+                        radicals.push(k.radical.glyph.chars().next().unwrap());
+                        i += 1;
+                    } else if k.radical.strokes > strk {
+                        println!();
+                        break;
+                    }
+                }
+                loop {
+                    print!("Choose the radical to use for your search: ");
+                    stdout().flush()?;
+                    strokes.clear();
+                    if (stdin().read_line(&mut strokes).expect("Can't read from stdin")) == 0 {
+                        std::process::exit(0);
+                    }
+
+                    match strokes.trim().parse::<usize>() {
+                        Ok(strk) => {
+                            if strk < 1 || strk > i-1 {
+                                eprintln!("Couldn't parse input: number not in range");
+                            } else {
+                                rad = radicals.get(strk-1).unwrap();
+                                /* UTF-8 is not fun */
+                                query.replace_range(query.char_indices().nth(n).unwrap().0..
+                                                    query.char_indices().nth(n).unwrap().0 +
+                                                    query.char_indices().nth(n).unwrap().1.len_utf8(),
+                                                    rad.to_string().as_str());
+                                println!("{}", query.as_str().bright_black());
+                                return Ok(*rad);
+                            }
+                        },
+                        Err(e) => { eprintln!("{e}"); }
+                    }
+                }
+            },
+            Err(e) => { eprintln!("{e}") }
+        }
+    }
 }
 
 fn pipe_to_less(output: String) {
@@ -418,28 +487,34 @@ fn pipe_to_less(output: String) {
                 panic!("couldn't pipe to less: {}", e);
             }
 
-            // We don't care about the return value, only whether wait failed or not
+            /* We don't care about the return value, only whether wait failed or not */
             if process.wait().is_err() {
                 panic!("wait() was called on non-existent child process\
                  - this should not be possible");
             }
         }
 
-        // less not found in PATH; print normally
+        /* less not found in PATH; print normally */
         Err(_e) => print!("{}", output)
     };
 }
 
+/* OS specific part of the program */
 #[cfg(unix)]
 fn terminal_size() -> Result<usize, i16> {
-    use libc::{c_ushort, ioctl, STDOUT_FILENO, TIOCGWINSZ};
+    use libc::{ioctl, STDOUT_FILENO, TIOCGWINSZ, winsize};
 
     unsafe {
-        let mut size: c_ushort = 0;
-        if ioctl(STDOUT_FILENO, TIOCGWINSZ.into(), &mut size as *mut _) != 0 {
-            Err(-1)
+        let mut size = winsize {
+            ws_row: 0,
+            ws_col: 0,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        if ioctl(STDOUT_FILENO, TIOCGWINSZ, &mut size as *mut _) == 0 {
+            Ok(size.ws_row as usize)
         } else {
-            Ok(size as usize)
+            Err(-1)
         }
     }
 }
@@ -451,7 +526,7 @@ fn terminal_size() -> Result<usize, i16> {
     unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE) as windows_sys::Win32::Foundation::HANDLE;
 
-        // Unlike the linux function, rust will complain if only part of the struct is sent
+        /* Unlike the linux function, rust will complain if only part of the struct is sent */
         let mut window = CONSOLE_SCREEN_BUFFER_INFO {
             dwSize: COORD { X: 0, Y: 0},
             dwCursorPosition: COORD { X: 0, Y: 0},
@@ -468,6 +543,46 @@ fn terminal_size() -> Result<usize, i16> {
             Err(0)
         } else {
             Ok((window.srWindow.Bottom - window.srWindow.Top) as usize)
+        }
+    }
+}
+
+#[cfg(unix)]
+fn get_radkfile_path() -> Option<PathBuf> {
+    #[allow(deprecated)] /* obviously no windows problem here */
+    std::env::home_dir()
+        .map(|path| path.join(".local/share/radkfile"))
+}
+
+#[cfg(windows)]
+/* Nicked this section straight from https://github.com/rust-lang/cargo/blob/master/crates/home/src/windows.rs */
+extern "C" {
+    fn wcslen(buf: *const u16) -> usize;
+}
+#[cfg(windows)]
+fn get_radkfile_path() -> Option<PathBuf> {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::Foundation::{MAX_PATH, S_OK};
+    use windows_sys::Win32::UI::Shell::{SHGetFolderPathW, CSIDL_PROFILE};
+
+    match env::var_os("USERPROFILE").filter(|s| !s.is_empty()).map(PathBuf::from) {
+        Some(path) => {
+            return Some(path.join("Appdata\\Local\\radkfile"));
+        },
+        None => {
+            unsafe {
+                let mut path: Vec<u16> = Vec::with_capacity(MAX_PATH as usize);
+                match SHGetFolderPathW(0, CSIDL_PROFILE as i32, 0, 0, path.as_mut_ptr()) {
+                    S_OK => {
+                        let len = wcslen(path.as_ptr());
+                        path.set_len(len);
+                        let s = OsString::from_wide(&path);
+                        Some(PathBuf::from(s).join("Appdata\\Local\\radkfile"))
+                    }
+                    _ => None,
+                }
+            }
         }
     }
 }

@@ -1,37 +1,27 @@
 # Jisho (cli)
-A very simple cli tool to look up Japanese words using jisho.org's API
+A very simple cli tool to look up Japanese words using jisho.org's API.
+Searching for kanji by radicals is also available.
 
 <br>
-<img src=".img/hV3BeXWDTmREm8ujOkR3v6903.png"/>
+<img src=".img/dab0ab082751a1b17271309c2ffc3c16d53c8498513619e50235e8157bab01fa.png">
+<img src=".img/16adb8274ff5e12b13545df2996dbdc3be149b9cd5575ceb38e2d9e031117ab9.png">
 
 # Installation
+Binaries are directly available from the release tab.
 
-From [Release tab](https://github.com/JojiiOfficial/jisho-cli/releases)
-<br>
-> Simply download the binary
-<br>
+# Compilation
 
-From my [Arch repository](https://repo.jojii.de)
+Download source and run
 ```
-sudo pacman -S jisho
+cargo build --release
 ```
-
-From crates.io:
-```
-cargo install jisho-cli
-```
-
-From AUR:
-```
-yay -S jisho
-```
-
-<br>
 
 # Usage
 ```
 jisho [<words to look up>]
+jisho :[<radicals in kanji>]
 ```
+When looking up radicals, * (or ＊) can be used to add a radical that can't be easily typed, e.g. 气.
 
-> Note: The binary from crates.io is called `jisho-cli`, not `jisho` <br>
-> Note: You can use spaces
+# Note
+To search kanji by radicals, the [radkfile](https://www.edrdg.org/krad/kradinf.html) needs to be installed in either `~/.local/share/` on Linux or `~\AppData\Local\` on Windows.
