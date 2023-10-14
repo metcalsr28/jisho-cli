@@ -522,11 +522,13 @@ fn terminal_size() -> Result<usize, i16> {
 #[cfg(windows)]
 fn terminal_size() -> Result<usize, i16> {
     use windows_sys::Win32::System::Console::*;
+    if let Err(e) = control::set_virtual_terminal(true) {
+        panic!("Could not set terminal as virtual: {:?}", e);
+    }
 
     unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE) as windows_sys::Win32::Foundation::HANDLE;
 
-        /* Unlike the linux function, rust will complain if only part of the struct is sent */
         let mut window = CONSOLE_SCREEN_BUFFER_INFO {
             dwSize: COORD { X: 0, Y: 0},
             dwCursorPosition: COORD { X: 0, Y: 0},
