@@ -74,14 +74,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                     result.clear();
 
                     /* First iteration: get the baseline for the results */
-                    let mut rad = query.char_indices().nth(1).unwrap().1;
+                    let mut rad = query.chars().nth(1).unwrap();
                     if rad == '*' || rad == '＊' {
-                        let a = search_by_strokes(&mut query, &radk_list, 1);
-                        if a.is_err() {
-                            /* if search_by_radical returned an error then something is very wrong */
-                            panic!("Couldn't parse input: {}", a.err().unwrap());
-                        }
-                        rad = a.unwrap();
+                        /* if search_by_radical returned an error then something is very wrong */
+                        rad = search_by_strokes(&mut query, &radk_list, 1).expect("Couldn't parse input");
                     }
 
                     for k in radk_list.iter() {
@@ -96,12 +92,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                     /* Iterate until you've exhausted user input: refine the baseline to get final output */
                     for (i, mut rad) in query.clone().chars().skip(2).enumerate() {
                         if rad == '*' || rad == '＊' {
-                            let a = search_by_strokes(&mut query, &radk_list, i+2);
-                            if a.is_err() {
-                                /* if search_by_radical returned an error then something is very wrong */
-                                panic!("Couldn't parse input: {}", a.err().unwrap());
-                            }
-                            rad = a.unwrap();
+                            /* if search_by_radical returned an error then something is very wrong */
+                            rad = search_by_strokes(&mut query, &radk_list, i+2).expect("Couldn't parse input");
                         }
 
                         for k in radk_list.iter() {
@@ -245,9 +237,7 @@ fn format_sense(value: &Value, index: usize, prev_parts_of_speech: &mut String) 
     let parts_of_speech = if let Some(parts_of_speech) = parts_of_speech {
         let parts = value_to_arr(parts_of_speech)
             .iter()
-            .map(|i| {
-                value_to_str(i)
-            })
+            .map(value_to_str)
             .collect::<Vec<&str>>()
             .join(", ");
 
@@ -292,7 +282,7 @@ fn format_result_tags(value: &Value) -> String {
 
     let is_common_val = value.get("is_common");
     if is_common_val.is_some() && value_to_bool(is_common_val.unwrap()) {
-        builder.push_str(&"(common) ".bright_green().to_string());
+        builder.push_str(&"(common) ".bright_green());
     }
 
     if let Some(jlpt) = value.get("jlpt") {
@@ -335,7 +325,7 @@ fn format_sense_tags(value: &Value) -> String {
 fn format_sense_tag(tag: &str) -> String {
     match tag {
         "Usually written using kana alone" => "UK".to_string(),
-        s => format!("{}", s),
+        s => s.to_string(),
     }
 }
 
@@ -457,9 +447,10 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
                             } else {
                                 rad = radicals.get(strk-1).unwrap();
                                 /* UTF-8 is not fun */
-                                query.replace_range(query.char_indices().nth(n).unwrap().0..
-                                                    query.char_indices().nth(n).unwrap().0 +
-                                                    query.char_indices().nth(n).unwrap().1.len_utf8(),
+                                let char_and_index = query.char_indices().nth(n).unwrap();
+                                query.replace_range(char_and_index.0..
+                                                    char_and_index.0 +
+                                                    char_and_index.1.len_utf8(),
                                                     rad.to_string().as_str());
                                 println!("{}", query.as_str().bright_black());
                                 return Ok(*rad);
@@ -570,7 +561,7 @@ fn get_radkfile_path() -> Option<PathBuf> {
 
     match env::var_os("USERPROFILE").filter(|s| !s.is_empty()).map(PathBuf::from) {
         Some(path) => {
-            return Some(path.join("Appdata\\Local\\radkfile"));
+            Some(path.join("Appdata\\Local\\radkfile"))
         },
         None => {
             unsafe {
