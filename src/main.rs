@@ -282,7 +282,7 @@ fn format_result_tags(value: &Value) -> String {
 
     let is_common_val = value.get("is_common");
     if is_common_val.is_some() && value_to_bool(is_common_val.unwrap()) {
-        builder.push_str(&"(common) ".bright_green());
+        builder.push_str(&"(common) ".bright_green().to_string());
     }
 
     if let Some(jlpt) = value.get("jlpt") {
