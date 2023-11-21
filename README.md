@@ -17,6 +17,7 @@ cargo build --release
 ```
 
 # Usage
+A readline wrapper like `rlwrap` is strongly recommended if using `jisho-cli` interactively (-i).
 ```
 jisho [<words to look up>]
 jisho :[<radicals in kanji>]
