@@ -9,26 +9,10 @@ A very simple cli tool to look up Japanese words using jisho.org's API
 
 # Installation
 
-From [Release tab](https://github.com/JojiiOfficial/jisho-cli/releases)
+From [Release tab](https://github.com/metcalsr28/jisho-cli/releases)
 <br>
-> Simply download the binary
-<br>
-
-From my [Arch repository](https://repo.jojii.de)
-```
-sudo pacman -S jisho
-```
-
-From crates.io:
-```
-cargo install jisho-cli
-```
-
-From AUR:
-```
-yay -S jisho
-```
-
+### Arch
+> Download the PKGBUILD and install with `makepkg -si`
 <br>
 
 # Usage
