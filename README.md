@@ -1,3 +1,6 @@
+# Purpose of fork
+The purpose of this fork is to add to this project functionality similar to https://github.com/eagleflo/jisho. I'm not a rust developer but I have significant experience programming in low level languages and will in all likelihood be able to figure it out.
+
 # Jisho (cli)
 A very simple cli tool to look up Japanese words using jisho.org's API
 
