@@ -70,7 +70,9 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
         print!("How many strokes does your radical have? ");
         stdout().flush()?;
         strokes.clear();
-        stdin().read_line(&mut strokes)?;
+        if stdin().read_line(&mut strokes)? == 0{
+            std::process::exit(0);
+        }
 
         match strokes.trim().parse::<u8>() {
             Ok(strk) => {
@@ -89,7 +91,9 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
                     print!("Choose the radical to use for your search: ");
                     stdout().flush()?;
                     strokes.clear();
-                    stdin().read_line(&mut strokes)?;
+                    if stdin().read_line(&mut strokes)? == 0{
+                        std::process::exit(0);
+                    }
 
                     match strokes.trim().parse::<usize>() {
                         Ok(strk) => {
