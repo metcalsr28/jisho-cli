@@ -1,5 +1,6 @@
 mod word_search;
 mod kanji_search;
+mod sentence_search;
 mod aux;
 use std::{
     io::{stdin, stdout, Write},
@@ -9,6 +10,7 @@ use std::{
 
 use word_search::word_search;
 use kanji_search::search_by_radical;
+use sentence_search::sentence_search;
 
 
 use argparse::{ArgumentParser, List, Print, Store, StoreTrue};
@@ -20,7 +22,13 @@ macro_rules! JISHO_URL {
         "https://jisho.org/api/v1/search/words?keyword={}"
     };
 }
-
+macro_rules! TATOEBA_URL_ENG_QUERY { () => {
+        "https://tatoeba.org/en/api_v0/search?from=eng&orphans=no&to=jpn&unapproved=no&query={}"
+    };
+}
+macro_rules! TATOEBA_URL_JPN_QUERY { () => {
+        "https://tatoeba.org/en/api_v0/search?from=jpn&orphans=no&to=eng&unapproved=no&query={}"
+    };
 }
 
 fn main() -> Result<(), ureq::Error> {
@@ -60,7 +68,34 @@ fn main() -> Result<(), ureq::Error> {
 
         if query.starts_with(':') || query.starts_with('：') { /* Kanji search */
             search_by_radical(&mut query);
-        } else {
+
+        } else if query.starts_with('_') || query.starts_with('＿'){ /* Sentence search */
+            /* Do API eng->jpn request */
+            let body: Value = ureq::get(&format!(TATOEBA_URL_ENG_QUERY!(), &query[1..]))
+                .call()?.into_json()?;
+
+            match sentence_search(&options, body, &mut output) {
+                Ok(r) => lines_output += r,
+                Err(e) => match e {
+                    -1 => {
+                        eprintln!("error: invalid json returned");
+                        return Ok(());
+                    },
+                    _ => { /* Valid response, but nothing useful */
+                        /* Do a jpn->eng request in case input is in japansese */
+                        let body: Value = ureq::get(&format!(TATOEBA_URL_JPN_QUERY!(), &query[1..]))
+                            .call()?.into_json()?;
+
+                        match sentence_search(&options, body, &mut output) {
+                            Ok(r) => lines_output += r,
+                            Err(e) => if e == -1 {
+                                eprintln!("Error: invalid json returned");
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
         } else { /* Word search */
             // Do API request
             let body: Value = ureq::get(&format!(JISHO_URL!(), query))
