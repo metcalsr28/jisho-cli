@@ -19,7 +19,7 @@ pub fn search_by_radical(mut query: &mut String){
             /* First iteration: get the baseline for the results */
             let mut rad = query.chars().nth(1).unwrap();
             if rad == '*' || rad == '＊' {
-                /* if search_by_radical returned an error then something is very wrong */
+                /* if search_by_strokes returned an error then something is very wrong */
                 rad = search_by_strokes(&mut query, &radk_list, 1).expect("Couldn't parse input");
             }
 
@@ -35,7 +35,7 @@ pub fn search_by_radical(mut query: &mut String){
             /* Iterate until you've exhausted user input: refine the baseline to get final output */
             for (i, mut rad) in query.clone().chars().skip(2).enumerate() {
                 if rad == '*' || rad == '＊' {
-                    /* if search_by_radical returned an error then something is very wrong */
+                    /* if search_by_strokes returned an error then something is very wrong */
                     rad = search_by_strokes(&mut query, &radk_list, i+2).expect("Couldn't parse input");
                 }
 
@@ -58,6 +58,61 @@ pub fn search_by_radical(mut query: &mut String){
         Err(_e) => eprintln!("Error while reading radkfile\nIf you don't have the radkfile, download it from \
         https://www.edrdg.org/krad/kradinf.html and place it in \"~/.local/share/\" on Linux or \"~\\AppData\\Local\\\" on Windows. \
         This file is needed to search radicals by strokes."),
+    }
+}
+
+fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usize) -> Result<char, std::io::Error> {
+
+    let mut strokes = String::new();
+    let mut radicals: Vec<char> = Vec::new();
+    let rad;
+    loop{
+        print!("How many strokes does your radical have? ");
+        stdout().flush()?;
+        strokes.clear();
+        stdin().read_line(&mut strokes)?;
+
+        match strokes.trim().parse::<u8>() {
+            Ok(strk) => {
+                let mut i = 1;
+                for k in radk_list.iter() {
+                    if k.radical.strokes == strk {
+                        print!("{}{} ", i, k.radical.glyph);
+                        radicals.push(k.radical.glyph.chars().next().unwrap());
+                        i += 1;
+                    } else if k.radical.strokes > strk {
+                        println!();
+                        break;
+                    }
+                }
+                loop {
+                    print!("Choose the radical to use for your search: ");
+                    stdout().flush()?;
+                    strokes.clear();
+                    stdin().read_line(&mut strokes)?;
+
+                    match strokes.trim().parse::<usize>() {
+                        Ok(strk) => {
+                            if strk < 1 || strk > i-1 {
+                                eprintln!("Couldn't parse input: number not in range");
+                            } else {
+                                rad = radicals.get(strk-1).unwrap();
+                                /* UTF-8 is not fun */
+                                let char_and_index = query.char_indices().nth(n).unwrap();
+                                query.replace_range(char_and_index.0..
+                                                    char_and_index.0 +
+                                                    char_and_index.1.len_utf8(),
+                                                    rad.to_string().as_str());
+                                println!("{}", query.as_str().bright_black());
+                                return Ok(*rad);
+                            }
+                        },
+                        Err(e) => { eprintln!("{e}"); }
+                    }
+                }
+            },
+            Err(e) => { eprintln!("{e}") }
+        }
     }
 }
 
@@ -97,65 +152,6 @@ fn get_radkfile_path() -> Option<PathBuf> {
                     _ => None,
                 }
             }
-        }
-    }
-}
-
-fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usize) -> Result<char, std::io::Error> {
-
-    let mut strokes = String::new();
-    let mut radicals: Vec<char> = Vec::new();
-    let rad;
-    loop{
-        print!("How many strokes does your radical have? ");
-        stdout().flush()?;
-        strokes.clear();
-        if (stdin().read_line(&mut strokes).expect("Can't read from stdin")) == 0 {
-            std::process::exit(0);
-        }
-
-        match strokes.trim().parse::<u8>() {
-            Ok(strk) => {
-                let mut i = 1;
-                for k in radk_list.iter() {
-                    if k.radical.strokes == strk {
-                        print!("{}{} ", i, k.radical.glyph);
-                        radicals.push(k.radical.glyph.chars().next().unwrap());
-                        i += 1;
-                    } else if k.radical.strokes > strk {
-                        println!();
-                        break;
-                    }
-                }
-                loop {
-                    print!("Choose the radical to use for your search: ");
-                    stdout().flush()?;
-                    strokes.clear();
-                    if (stdin().read_line(&mut strokes).expect("Can't read from stdin")) == 0 {
-                        std::process::exit(0);
-                    }
-
-                    match strokes.trim().parse::<usize>() {
-                        Ok(strk) => {
-                            if strk < 1 || strk > i-1 {
-                                eprintln!("Couldn't parse input: number not in range");
-                            } else {
-                                rad = radicals.get(strk-1).unwrap();
-                                /* UTF-8 is not fun */
-                                let char_and_index = query.char_indices().nth(n).unwrap();
-                                query.replace_range(char_and_index.0..
-                                                    char_and_index.0 +
-                                                    char_and_index.1.len_utf8(),
-                                                    rad.to_string().as_str());
-                                println!("{}", query.as_str().bright_black());
-                                return Ok(*rad);
-                            }
-                        },
-                        Err(e) => { eprintln!("{e}"); }
-                    }
-                }
-            },
-            Err(e) => { eprintln!("{e}") }
         }
     }
 }
