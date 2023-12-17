@@ -7,20 +7,20 @@ use std::{
 use colored::*;
 use kradical_parsing::radk;
 
-pub fn search_by_radical(query: &mut String){
+pub fn search_by_radical(query: &mut String) -> Option<()> {
     let mut result: HashSet<_> = HashSet::new();
     let mut aux: HashSet<_> = HashSet::new();
     let path = get_radkfile_path();
 
-    match radk::parse_file(path.unwrap()) { /* if it doesn't exist, just panic */
+    match radk::parse_file(path.unwrap()) { /* if path doesn't exist, just panic */
         Ok(radk_list) => {
             result.clear();
 
             /* First iteration: get the baseline for the results */
             let mut rad = query.chars().nth(1).unwrap();
             if rad == '*' || rad == '＊' {
-                /* if search_by_strokes returned an error then something is very wrong */
-                rad = search_by_strokes(query, &radk_list, 1).expect("Couldn't parse input");
+                /* if search_by_strokes failed, then something is very wrong */
+                rad = search_by_strokes(query, &radk_list, 1)?;
             }
 
             for k in radk_list.iter() {
@@ -35,8 +35,8 @@ pub fn search_by_radical(query: &mut String){
             /* Iterate until you've exhausted user input: refine the baseline to get final output */
             for (i, mut rad) in query.clone().chars().skip(2).enumerate() {
                 if rad == '*' || rad == '＊' {
-                    /* if search_by_strokes returned an error then something is very wrong */
-                    rad = search_by_strokes(query, &radk_list, i+2).expect("Couldn't parse input");
+                    /* if search_by_strokes failed, then something is very wrong */
+                    rad = search_by_strokes(query, &radk_list, i+2)?;
                 }
 
                 for k in radk_list.iter() {
@@ -59,18 +59,19 @@ pub fn search_by_radical(query: &mut String){
         https://www.edrdg.org/krad/kradinf.html and place it in \"~/.local/share/\" on Linux or \"~\\AppData\\Local\\\" on Windows. \
         This file is needed to search radicals by strokes."),
     }
+    Some(())
 }
 
-fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usize) -> Result<char, std::io::Error> {
+fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usize) -> Option<char> {
 
     let mut strokes = String::new();
     let mut radicals: Vec<char> = Vec::new();
     let rad;
     loop{
         print!("How many strokes does your radical have? ");
-        stdout().flush()?;
+        stdout().flush().ok()?;
         strokes.clear();
-        if stdin().read_line(&mut strokes)? == 0{
+        if stdin().read_line(&mut strokes).ok()? == 0{
             std::process::exit(0);
         }
 
@@ -80,7 +81,7 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
                 for k in radk_list.iter() {
                     if k.radical.strokes == strk {
                         print!("{}{} ", i, k.radical.glyph);
-                        radicals.push(k.radical.glyph.chars().next().unwrap());
+                        radicals.push(k.radical.glyph.chars().next()?);
                         i += 1;
                     } else if k.radical.strokes > strk {
                         println!();
@@ -89,9 +90,9 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
                 }
                 loop {
                     print!("Choose the radical to use for your search: ");
-                    stdout().flush()?;
+                    stdout().flush().ok()?;
                     strokes.clear();
-                    if stdin().read_line(&mut strokes)? == 0{
+                    if stdin().read_line(&mut strokes).ok()? == 0{
                         std::process::exit(0);
                     }
 
@@ -100,15 +101,15 @@ fn search_by_strokes(query: &mut String, radk_list: &[radk::Membership], n: usiz
                             if strk < 1 || strk > i-1 {
                                 eprintln!("Couldn't parse input: number not in range");
                             } else {
-                                rad = radicals.get(strk-1).unwrap();
+                                rad = radicals.get(strk-1)?;
                                 /* UTF-8 is not fun */
-                                let char_and_index = query.char_indices().nth(n).unwrap();
+                                let char_and_index = query.char_indices().nth(n)?;
                                 query.replace_range(char_and_index.0..
                                                     char_and_index.0 +
                                                     char_and_index.1.len_utf8(),
                                                     rad.to_string().as_str());
                                 println!("{}", query.as_str().bright_black());
-                                return Ok(*rad);
+                                return Some(*rad);
                             }
                         },
                         Err(e) => { eprintln!("{e}"); }

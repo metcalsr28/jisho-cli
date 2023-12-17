@@ -67,7 +67,10 @@ fn main() -> Result<(), ureq::Error> {
         let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
 
         if query.starts_with(':') || query.starts_with('：') { /* Kanji search */
-            search_by_radical(&mut query);
+            /* if search_by_radical failed then something is very wrong */
+            if search_by_radical(&mut query).is_none() {
+                eprintln!("Couldn't parse input");
+            }
 
         } else if query.starts_with('_') || query.starts_with('＿') { /* Sentence search */
             let bytes = query.chars().next().unwrap().len_utf8();
