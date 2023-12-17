@@ -122,9 +122,10 @@ fn parse_args() -> aux::Options {
     let mut query_vec: Vec<String> = Vec::new();
     {
         let mut ap = ArgumentParser::new();
-        ap.set_description("Use jisho.org from cli. \
+        ap.set_description("Use jisho.org from the cli. \
                             Searching for kanji by radicals is also available if the radkfile file is installed in \"~/.local/share\" \
-                            or \"~\\AppData\\Local\\\" if you're on Windows.");
+                            (linux) or \"~\\AppData\\Local\\\" (windows). \
+                            Additionally, searching for sentences in tatoeba is also possible.");
         ap.add_option(
             &["-V", "--version"],
             Print(env!("CARGO_PKG_VERSION").to_string()),
@@ -138,7 +139,8 @@ fn parse_args() -> aux::Options {
         ap.refer(&mut query_vec)
             .add_argument("Query", List, "Search terms using jisho.org;
                           Prepend it with ':' to search a kanji by radicals instead \
-                          and ':*' to search a radical by strokes (e.g. ':口*').");
+                          and ':*' to search a radical by strokes (e.g. ':口*'); \
+                          You can also use '_' to see example sentences from tatoeba.");
 
         ap.refer(&mut options.interactive).add_option(
             &["-i", "--interactive"],
