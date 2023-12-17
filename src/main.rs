@@ -44,8 +44,9 @@ fn main() -> Result<(), ureq::Error> {
     loop {
 
         query.clear();
-        if options.interactive || query.trim().is_empty() {
-            while query.trim().is_empty() || query.trim() == ":" || query.trim() == "：" {
+        query = options.query.trim().to_string().clone();
+        if options.interactive || options.query.trim().is_empty() {
+            while query.is_empty() || query == ":" || query == "：" || query == "_" || query == "＿" {
                 query.clear();
                 print!("=> ");
                 stdout().flush().unwrap();
@@ -55,12 +56,10 @@ fn main() -> Result<(), ureq::Error> {
                 }
             }
         } else {
-            query = options.query.clone();
-            if query.trim() == ":" || query.trim() == "："  || query.trim() == "_" || query.trim() == "＿" {
+            if query == ":" || query == "："  || query == "_" || query == "＿" {
                 return Ok(());
             }
         }
-        query = query.trim().to_string();
 
         let mut lines_output = 0;
         let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
@@ -111,7 +110,7 @@ fn main() -> Result<(), ureq::Error> {
         } else {
             print!("{}", output);
         }
-        if !options.interactive {
+        if !options.interactive && !options.query.trim().is_empty() {
             break;
         }
     }
