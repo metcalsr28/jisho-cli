@@ -12,7 +12,6 @@ use word_search::word_search;
 use kanji_search::search_by_radical;
 use sentence_search::sentence_search;
 
-
 use argparse::{ArgumentParser, List, Print, Store, StoreTrue};
 use serde_json::Value;
 use atty::Stream;
@@ -45,7 +44,7 @@ fn main() -> Result<(), ureq::Error> {
     loop {
 
         query.clear();
-        if options.interactive {
+        if options.interactive || query.trim().is_empty() {
             while query.trim().is_empty() || query.trim() == ":" || query.trim() == "：" {
                 query.clear();
                 print!("=> ");
@@ -57,7 +56,7 @@ fn main() -> Result<(), ureq::Error> {
             }
         } else {
             query = options.query.clone();
-            if query.trim().is_empty() || query.trim() == ":" || query.trim() == "："  || query.trim() == "_" || query.trim() == "＿" {
+            if query.trim() == ":" || query.trim() == "："  || query.trim() == "_" || query.trim() == "＿" {
                 return Ok(());
             }
         }
@@ -67,7 +66,7 @@ fn main() -> Result<(), ureq::Error> {
         let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
 
         if query.starts_with(':') || query.starts_with('：') { /* Kanji search */
-            /* if search_by_radical failed then something is very wrong */
+            /* if search_by_radical failed, then something is very wrong */
             if search_by_radical(&mut query).is_none() {
                 eprintln!("Couldn't parse input");
             }
