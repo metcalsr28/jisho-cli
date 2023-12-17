@@ -7,7 +7,7 @@ use std::{
 use colored::*;
 use kradical_parsing::radk;
 
-pub fn search_by_radical(mut query: &mut String){
+pub fn search_by_radical(query: &mut String){
     let mut result: HashSet<_> = HashSet::new();
     let mut aux: HashSet<_> = HashSet::new();
     let path = get_radkfile_path();
@@ -20,7 +20,7 @@ pub fn search_by_radical(mut query: &mut String){
             let mut rad = query.chars().nth(1).unwrap();
             if rad == '*' || rad == '＊' {
                 /* if search_by_strokes returned an error then something is very wrong */
-                rad = search_by_strokes(&mut query, &radk_list, 1).expect("Couldn't parse input");
+                rad = search_by_strokes(query, &radk_list, 1).expect("Couldn't parse input");
             }
 
             for k in radk_list.iter() {
@@ -36,7 +36,7 @@ pub fn search_by_radical(mut query: &mut String){
             for (i, mut rad) in query.clone().chars().skip(2).enumerate() {
                 if rad == '*' || rad == '＊' {
                     /* if search_by_strokes returned an error then something is very wrong */
-                    rad = search_by_strokes(&mut query, &radk_list, i+2).expect("Couldn't parse input");
+                    rad = search_by_strokes(query, &radk_list, i+2).expect("Couldn't parse input");
                 }
 
                 for k in radk_list.iter() {

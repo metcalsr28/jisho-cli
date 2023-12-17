@@ -3,18 +3,14 @@ use crate::aux::*;
 use serde_json::Value;
 use colored::*;
 
-pub fn word_search(options: &Options, body: Value, query: &String, mut output: &mut String) -> Option<usize> {
+pub fn word_search(options: &Options, body: Value, query: &str, output: &mut String) -> Option<usize> {
     let mut lines_output = 0;
 
     // Try to get the data json-object
     let body = value_to_arr({
         let body = body.get("data");
 
-        if body.is_none() {
-            return None;
-        }
-
-        body.unwrap()
+        body?
     });
 
     /* Iterate over meanings and print them */
@@ -22,7 +18,7 @@ pub fn word_search(options: &Options, body: Value, query: &String, mut output: &
         if i >= options.limit && options.limit != 0 {
             break;
         }
-        if let Some(r) = print_item(&query, entry, &mut output) {
+        if let Some(r) = print_item(query, entry, output) {
             lines_output += r;
         }
 

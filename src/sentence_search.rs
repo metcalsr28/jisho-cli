@@ -3,17 +3,13 @@ use crate::aux::*;
 use serde_json::Value;
 use colored::*;
 
-pub fn sentence_search(options: &Options, body: Value, output: &mut String) -> Result<usize, i8>{
+pub fn sentence_search(options: &Options, body: Value, output: &mut String) -> Option<usize>{
 
     let mut lines = 0;
     let body = value_to_arr({
         let body = body.get("results");
 
-        if body.is_none() {
-            return Err(-1);
-        }
-
-        body.unwrap()
+        body?
     });
 
     let mut i = 1;
@@ -27,28 +23,23 @@ pub fn sentence_search(options: &Options, body: Value, output: &mut String) -> R
             break;
         }
 
+        /* json nonsense */
         let translations = value_to_arr({
             let translations = entry.get("translations");
+            let translations = value_to_arr(translations?).get(0);
 
-            if translations.is_none() {
-                return Err(-1);
-            }
-            let translations = value_to_arr(translations.unwrap()).get(0);
-            if translations.is_none() {
-                return Err(-1);
-            }
-            translations.unwrap()
+            translations?
         });
 
 
         for translation in translations.iter() {
             let index_str = format!("{}.", i).bright_black();
             
-            /* prefer to keep japanese sentences on top */
-            if entry.get("lang").unwrap() == "eng" {
-                *output += &format!("{} {}\n   {}\n\n", index_str, value_to_str(translation.get("text").unwrap()).replace("\"", ""), value_to_str(entry.get("text").unwrap()).replace("\"", ""));
+            /* Prefer to keep japanese sentences on top */
+            if entry.get("lang")? == "eng" {
+                *output += &format!("{} {}\n   {}\n\n", index_str, value_to_str(translation.get("text")?), value_to_str(entry.get("text")?));
             } else {
-                *output += &format!("{} {}\n   {}\n\n", index_str, value_to_str(entry.get("text").unwrap()).replace("\"", ""), value_to_str(translation.get("text").unwrap()).replace("\"", ""));
+                *output += &format!("{} {}\n   {}\n\n", index_str, value_to_str(entry.get("text")?), value_to_str(translation.get("text")?));
             }
 
             i += 1;
@@ -56,8 +47,5 @@ pub fn sentence_search(options: &Options, body: Value, output: &mut String) -> R
         }
 
     }
-    if !output.is_empty() {
-        return Ok(lines)
-    }
-    Err(1)
+    Some(lines)
 }

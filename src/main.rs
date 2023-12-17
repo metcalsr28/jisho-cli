@@ -57,45 +57,37 @@ fn main() -> Result<(), ureq::Error> {
             }
         } else {
             query = options.query.clone();
-            if query.trim().is_empty() || query.trim() == ":" || query.trim() == "：" {
+            if query.trim().is_empty() || query.trim() == ":" || query.trim() == "："  || query.trim() == "_" || query.trim() == "＿" {
                 return Ok(());
             }
         }
         query = query.trim().to_string();
 
         let mut lines_output = 0;
-        let mut output = String::with_capacity(5242880); /* Give output 5MiB of buffer; Should be enough to avoid reallocs*/
+        let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
 
         if query.starts_with(':') || query.starts_with('：') { /* Kanji search */
             search_by_radical(&mut query);
 
-        } else if query.starts_with('_') || query.starts_with('＿'){ /* Sentence search */
-            /* Do API eng->jpn request */
-            let body: Value = ureq::get(&format!(TATOEBA_URL_ENG_QUERY!(), &query[1..]))
-                .call()?.into_json()?;
+        } else if query.starts_with('_') || query.starts_with('＿') { /* Sentence search */
+            let bytes = query.chars().next().unwrap().len_utf8();
 
-            match sentence_search(&options, body, &mut output) {
-                Ok(r) => lines_output += r,
-                Err(e) => match e {
-                    -1 => {
-                        eprintln!("error: invalid json returned");
-                        return Ok(());
-                    },
-                    _ => { /* Valid response, but nothing useful */
-                        /* Do a jpn->eng request in case input is in japansese */
-                        let body: Value = ureq::get(&format!(TATOEBA_URL_JPN_QUERY!(), &query[1..]))
-                            .call()?.into_json()?;
+            /* Do API request */
+            let body: Value = if query.chars().nth(1).unwrap().len_utf8() == 1 { /* Check if the query is jpn->eng or eng->jpn */
+                ureq::get(&format!(TATOEBA_URL_ENG_QUERY!(), &query[bytes..]))
+                    .call()?.into_json()?
+            } else {
+                ureq::get(&format!(TATOEBA_URL_JPN_QUERY!(), &query[bytes..]))
+                    .call()?.into_json()?
+            };
 
-                        match sentence_search(&options, body, &mut output) {
-                            Ok(r) => lines_output += r,
-                            Err(e) => if e == -1 {
-                                eprintln!("Error: invalid json returned");
-                                return Ok(());
-                            }
-                        }
-                    }
-                }
+            if let Some(r) = sentence_search(&options, body, &mut output) {
+                lines_output += r;
+            } else {
+                eprintln!("error: invalid json returned");
+                return Ok(());
             }
+
         } else { /* Word search */
             // Do API request
             let body: Value = ureq::get(&format!(JISHO_URL!(), query))
