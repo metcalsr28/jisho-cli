@@ -41,6 +41,7 @@ fn main() -> Result<(), ureq::Error> {
     let options = parse_args();
 
     let mut query = String::new();
+    let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
     loop {
 
         query.clear();
@@ -62,7 +63,7 @@ fn main() -> Result<(), ureq::Error> {
         }
 
         let mut lines_output = 0;
-        let mut output = String::with_capacity(51200); /* Give output 50KiB of buffer; Should be enough to avoid reallocs*/
+        output.clear();
 
         if query.starts_with(':') || query.starts_with('：') { /* Kanji search */
             /* if search_by_radical failed, then something is very wrong */
@@ -106,7 +107,7 @@ fn main() -> Result<(), ureq::Error> {
         if lines_output >= term_size - 1 && term_size != 0 {
             /* Output is a different process that is not a tty (i.e. less), but we want to keep colour */
             env::set_var("CLICOLOR_FORCE", "1");
-            pipe_to_less(output);
+            pipe_to_less(&output);
         } else {
             print!("{}", output);
         }
@@ -155,7 +156,7 @@ fn parse_args() -> aux::Options {
     options
 }
 
-fn pipe_to_less(output: String) {
+fn pipe_to_less(output: &String) {
 
     let command = Command::new("less")
                     .arg("-R")
