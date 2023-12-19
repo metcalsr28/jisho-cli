@@ -12,6 +12,7 @@ use word_search::word_search;
 use kanji_search::search_by_radical;
 use sentence_search::sentence_search;
 
+
 use argparse::{ArgumentParser, List, Print, Store, StoreTrue};
 use serde_json::Value;
 use atty::Stream;
@@ -202,6 +203,8 @@ fn terminal_size() -> Result<usize, i16> {
 #[cfg(windows)]
 fn terminal_size() -> Result<usize, i16> {
     use windows_sys::Win32::System::Console::*;
+    use colored::control;
+
     if let Err(e) = control::set_virtual_terminal(true) {
         panic!("Could not set terminal as virtual: {:?}", e);
     }
