@@ -1,7 +1,7 @@
 mod word_search;
 mod kanji_search;
 mod sentence_search;
-mod aux;
+mod util;
 use std::{
     io::{stdin, stdout, Write},
     process::{Command, Stdio},
@@ -56,10 +56,8 @@ fn main() -> Result<(), ureq::Error> {
                     return Ok(());
                 }
             }
-        } else {
-            if query == ":" || query == "："  || query == "_" || query == "＿" {
+        } else if query == ":" || query == "："  || query == "_" || query == "＿" {
                 return Ok(());
-            }
         }
 
         let mut lines_output = 0;
@@ -118,8 +116,8 @@ fn main() -> Result<(), ureq::Error> {
     Ok(())
 }
 
-fn parse_args() -> aux::Options {
-    let mut options = aux::Options::default();
+fn parse_args() -> util::Options {
+    let mut options = util::Options::default();
     let mut query_vec: Vec<String> = Vec::new();
     {
         let mut ap = ArgumentParser::new();
