@@ -1,3 +1,5 @@
+Continued in https://github.com/Hiers/Yakudatsu
+
 # Jisho (cli)
 A simple cli tool to look up Japanese words using jisho.org's API.
 Additionally, searching for kanji by radicals and browsing tatoeba's database of example sentences is also available.
